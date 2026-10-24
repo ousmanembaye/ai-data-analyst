@@ -1,3 +1,17 @@
+---
+title: AI Data Analyst Agent
+emoji: 📊
+colorFrom: blue
+colorTo: indigo
+sdk: gradio
+sdk_version: 6.30.0
+python_version: "3.12"
+app_file: app.py
+short_description: Analyze CSV and Excel data using a local LLM
+startup_duration_timeout: 30m
+pinned: false
+---
+
 # AI Data Analyst Agent
 
 Agente AI che permette di analizzare dataset CSV ed Excel attraverso domande in linguaggio naturale.
