@@ -1,0 +1,11 @@
+date,product,quantity,unit_price,region
+2026-01-05,Laptop,2,900,Nord
+2026-01-10,Mouse,10,20,Nord
+2026-01-15,Monitor,3,180,Centro
+2026-02-02,Laptop,1,950,Sud
+2026-02-18,Keyboard,5,45,Nord
+2026-02-25,Monitor,4,175,Centro
+2026-03-01,Mouse,8,22,Sud
+2026-03-12,Keyboard,6,40,Nord
+2026-03-20,Laptop,1,900,Centro
+2026-03-28,Monitor,2,190,
