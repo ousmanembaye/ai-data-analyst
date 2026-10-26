@@ -170,8 +170,12 @@ def revenue_by_month(df: pd.DataFrame) -> pd.DataFrame:
 
     sales = add_revenue_column(df)
 
-    dates = pd.to_datetime(sales["date"], errors="coerce")
-
+    dates = pd.to_datetime(
+        sales["date"],
+        format="mixed",
+        errors="coerce",
+    )
+    
     if dates.isna().any():
         raise ValueError(
             "La colonna 'date' contiene date mancanti o non valide."

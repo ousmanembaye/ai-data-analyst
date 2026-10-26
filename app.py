@@ -1,3 +1,5 @@
+import logging
+
 from pathlib import Path
 
 import gradio as gr
@@ -39,9 +41,34 @@ def answer_question(
 
         return answer, chart
 
-    except Exception as exc:
+    except FileNotFoundError:
         return (
-            f"Errore durante l'analisi: {exc}",
+            "Il file caricato non è più disponibile. "
+            "Caricalo nuovamente.",
+            None,
+        )
+
+    except ValueError as exc:
+        return (
+            f"Non riesco ad analizzare il dataset: {exc}",
+            None,
+        )
+
+    except OSError:
+        logging.exception("Errore durante la lettura del dataset")
+
+        return (
+            "Non riesco a leggere il file. "
+            "Verifica che sia un CSV o Excel valido e non danneggiato.",
+            None,
+        )
+
+    except Exception:
+        logging.exception("Errore imprevisto durante l'analisi")
+
+        return (
+            "Si è verificato un errore imprevisto durante l'analisi. "
+            "Controlla il terminale per maggiori dettagli.",
             None,
         )
 

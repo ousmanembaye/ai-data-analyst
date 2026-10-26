@@ -158,6 +158,53 @@ class TestDataAnalyzer(unittest.TestCase):
         with self.assertRaises(ValueError):
             load_dataset(txt_path)
 
+    def test_add_revenue_column_invalid_quantity(self):
+        """Rifiuta quantità che non sono numeriche."""
+
+        invalid_df = self.df.copy()
+        invalid_df["quantity"] = ["abc", 10, 1, 8]
+
+        with self.assertRaisesRegex(ValueError, "quantity"):
+            add_revenue_column(invalid_df)
+
+    def test_add_revenue_column_missing_product_value(self):
+        """Rifiuta righe senza il nome del prodotto."""
+
+        invalid_df = self.df.copy()
+        invalid_df.loc[0, "product"] = None
+
+        with self.assertRaisesRegex(ValueError, "product"):
+            add_revenue_column(invalid_df)
+
+    def test_revenue_by_month_missing_date_column(self):
+        """Rifiuta l'analisi mensile se manca la colonna date."""
+
+        invalid_df = self.df.drop(columns=["date"])
+
+        with self.assertRaisesRegex(ValueError, "date"):
+            revenue_by_month(invalid_df)
+
+    def test_revenue_by_month_invalid_date(self):
+        """Rifiuta date che non possono essere interpretate."""
+
+        invalid_df = self.df.copy()
+        invalid_df.loc[0, "date"] = "data-sbagliata"
+
+        with self.assertRaisesRegex(ValueError, "non valide"):
+            revenue_by_month(invalid_df)
+
+    def test_load_csv_header_without_rows(self):
+        """Rifiuta un CSV che contiene le intestazioni ma nessun dato."""
+
+        empty_csv = self.temp_path / "empty.csv"
+        empty_csv.write_text(
+            "date,product,quantity,unit_price,region\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "righe di dati"):
+            load_csv(empty_csv)
+
 
 if __name__ == "__main__":
     unittest.main()
