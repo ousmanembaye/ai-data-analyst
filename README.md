@@ -82,3 +82,9 @@ Il progetto include `data/sales.csv`, un piccolo dataset di vendite utilizzato p
 ## Obiettivo
 
 Realizzare un agente AI che combini modelli linguistici, strumenti Python e analisi deterministica dei dati in un'applicazione interattiva.
+
+## Demo
+
+Ecco un esempio dell'agente AI mentre analizza un dataset di vendite:
+
+![AI Data Analyst Agent in funzione](docs/ai-data-analyst-demo.png)
