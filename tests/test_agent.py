@@ -186,6 +186,13 @@ class TestAgentRouting(unittest.TestCase):
 
         self.assertIsNone(result)
 
+    def test_fallback_sales_overview(self):
+        result = fallback_routing(
+            "Confronta i ricavi per prodotto e per mese."
+        )
+
+        self.assertEqual(result, "sales_overview")
+
 
 class TestAgentTools(unittest.TestCase):
 
@@ -328,6 +335,16 @@ class TestAgentTools(unittest.TestCase):
                 },
             },
         )
+
+    def test_sales_overview(self):
+        result = execute_tool("sales_overview")
+
+        self.assertIn("RICAVI PER PRODOTTO", result)
+        self.assertIn("RICAVI PER MESE", result)
+        self.assertIn("Laptop", result)
+        self.assertIn("2026-01", result)
+        self.assertIn("2026-02", result)
+        self.assertIn("2026-03", result)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ AVAILABLE_TOOLS = {
     "monthly_revenue",
     "monthly_chart",
     "dataset_profile",
+    "sales_overview",
 }
 
 def parse_tool_call(model_output: str) -> dict | None:
@@ -126,6 +127,33 @@ def fallback_routing(user_message: str) -> str | None:
 
     text = normalize_text(user_message)
 
+    # Richieste che combinano analisi per prodotto e per mese.
+    product_terms = (
+        "prodotto",
+        "prodotti",
+        "articolo",
+        "articoli",
+        "laptop",
+        "mouse",
+        "monitor",
+        "keyboard",
+    )
+
+    month_terms = (
+        "mese",
+        "mesi",
+        "mensil",
+        "andamento",
+        "trend",
+        "nel tempo",
+    )
+
+    has_product = any(term in text for term in product_terms)
+    has_month = any(term in text for term in month_terms)
+
+    if has_product and has_month:
+        return "sales_overview"
+
     # 1. Richieste di grafici
     if any(word in text for word in (
         "grafico",
@@ -206,6 +234,10 @@ Classifica la richiesta dell'utente.
 
 Gli strumenti disponibili sono:
 
+sales_overview:
+Calcola i ricavi per prodotto e i ricavi per mese,
+restituendo entrambi i riepiloghi.
+
 total_revenue:
 Calcola i ricavi complessivi.
 
@@ -237,6 +269,9 @@ Esempio per una richiesta relativa a un prodotto specifico:
 
 Altri esempi:
 
+"Analizza i ricavi per prodotto e per mese."
+{{"tool": "sales_overview", "arguments": {{}}}}
+
 "Quanto sono i ricavi totali?"
 {{"tool": "total_revenue", "arguments": {{}}}}
 
@@ -248,6 +283,7 @@ Altri esempi:
 
 "Ci sono valori mancanti?"
 {{"tool": "dataset_profile", "arguments": {{}}}}
+
 
 Richiesta dell'utente:
 {user_message}
@@ -357,6 +393,25 @@ def execute_tool(
             f"({top_product['revenue']:.2f})\n\n"
             f"Ricavi per prodotto:\n"
             f"{summary.to_string(index=False)}"
+        )
+
+    if tool_name == "sales_overview":
+        # Primo passaggio: calcolo dei ricavi per prodotto.
+        product_summary = revenue_by_product(df)
+
+        # Secondo passaggio: calcolo dei ricavi per mese.
+        monthly_summary = revenue_by_month(df)
+
+        top_product = product_summary.iloc[0]
+
+        return (
+            "=== RICAVI PER PRODOTTO ===\n"
+            f"{product_summary.to_string(index=False)}\n\n"
+            f"Prodotto con i ricavi più alti: "
+            f"{top_product['product']} "
+            f"({top_product['revenue']:.2f})\n\n"
+            "=== RICAVI PER MESE ===\n"
+            f"{monthly_summary.to_string(index=False)}"
         )
 
     if tool_name == "monthly_revenue":
