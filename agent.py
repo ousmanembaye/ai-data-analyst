@@ -1,3 +1,4 @@
+import json
 import re
 import unicodedata
 from pathlib import Path
@@ -25,6 +26,81 @@ AVAILABLE_TOOLS = {
     "monthly_chart",
     "dataset_profile",
 }
+
+def parse_tool_call(model_output: str) -> dict | None:
+    """
+    Interpreta e valida il JSON generato dal modello.
+
+    Accetta strumenti autorizzati e, per product_revenue,
+    permette un argomento opzionale chiamato 'product'.
+    """
+
+    try:
+        cleaned_output = model_output.strip()
+
+        # Rimuove gli eventuali delimitatori Markdown.
+        if cleaned_output.startswith("```"):
+            lines = cleaned_output.splitlines()
+
+            # Rimuove la prima riga, ad esempio ```json.
+            if lines and lines[0].strip().startswith("```"):
+                lines = lines[1:]
+
+            # Rimuove la chiusura ```.
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+
+            cleaned_output = "\n".join(lines).strip()
+
+        payload = json.loads(cleaned_output)
+
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    if set(payload.keys()) != {"tool", "arguments"}:
+        return None
+
+    tool_name = payload["tool"]
+    arguments = payload["arguments"]
+
+    if not isinstance(tool_name, str):
+        return None
+
+    if tool_name not in AVAILABLE_TOOLS:
+        return None
+
+    if not isinstance(arguments, dict):
+        return None
+
+    # Tutti gli strumenti possono essere chiamati senza argomenti.
+    if arguments == {}:
+        return {
+            "tool": tool_name,
+            "arguments": {},
+        }
+
+    # Soltanto product_revenue accetta l'argomento product.
+    if tool_name == "product_revenue":
+        if set(arguments.keys()) != {"product"}:
+            return None
+
+        product = arguments["product"]
+
+        if not isinstance(product, str) or not product.strip():
+            return None
+
+        return {
+            "tool": tool_name,
+            "arguments": {
+                "product": product.strip(),
+            },
+        }
+
+    # Gli altri strumenti non accettano argomenti in questa versione.
+    return None
 
 
 def normalize_text(text: str) -> str:
@@ -119,70 +195,69 @@ def fallback_routing(user_message: str) -> str | None:
 
 
 
-def choose_tool(user_message: str) -> str | None:
+def choose_tool(user_message: str) -> dict | None:
     """
-    Chiede all'LLM di selezionare uno strumento autorizzato.
-    Se la risposta non è valida, prova il routing basato su regole.
+    Chiede all'LLM di scegliere uno strumento e i suoi argomenti.
+    Valida il JSON e utilizza il fallback se la risposta non è valida.
     """
 
     routing_prompt = f"""
 Classifica la richiesta dell'utente.
 
-Devi scegliere ESATTAMENTE uno dei seguenti strumenti:
-
-total_revenue
-product_revenue
-monthly_revenue
-monthly_chart
-dataset_profile
-
-Significato degli strumenti:
+Gli strumenti disponibili sono:
 
 total_revenue:
-Calcola i ricavi complessivi di tutte le vendite.
+Calcola i ricavi complessivi.
 
 product_revenue:
-Calcola i ricavi per prodotto e permette di individuare
-il prodotto con i ricavi più alti.
+Calcola i ricavi per prodotto.
+Può ricevere l'argomento opzionale "product".
+Se l'utente chiede i ricavi di un prodotto specifico,
+inserisci il suo nome nell'argomento.
+Se chiede una classifica o il prodotto più redditizio,
+usa arguments vuoto.
 
 monthly_revenue:
-Calcola i ricavi aggregati per mese.
+Calcola i ricavi per mese.
 
 monthly_chart:
 Genera un grafico dei ricavi mensili.
 
 dataset_profile:
-Descrive il dataset, le colonne e i valori mancanti.
+Descrive il dataset e i valori mancanti.
 
-Esempi:
+Restituisci esclusivamente un JSON valido,
+senza spiegazioni e senza Markdown.
+
+Esempio per una richiesta generica:
+{{"tool": "product_revenue", "arguments": {{}}}}
+
+Esempio per una richiesta relativa a un prodotto specifico:
+{{"tool": "product_revenue", "arguments": {{"product": "Laptop"}}}}
+
+Altri esempi:
 
 "Quanto sono i ricavi totali?"
-Risposta: total_revenue
-
-"Quale prodotto ha generato più ricavi?"
-Risposta: product_revenue
+{{"tool": "total_revenue", "arguments": {{}}}}
 
 "Mostrami i ricavi per mese."
-Risposta: monthly_revenue
+{{"tool": "monthly_revenue", "arguments": {{}}}}
 
 "Crea un grafico delle vendite."
-Risposta: monthly_chart
+{{"tool": "monthly_chart", "arguments": {{}}}}
 
 "Ci sono valori mancanti?"
-Risposta: dataset_profile
-
-Rispondi soltanto con il nome dello strumento,
-senza spiegazioni.
+{{"tool": "dataset_profile", "arguments": {{}}}}
 
 Richiesta dell'utente:
 {user_message}
 """
 
     system_prompt = (
-        "Sei un router di strumenti per un agente di analisi dati. "
-        "Devi classificare le richieste e restituire soltanto "
-        "uno dei nomi di strumenti autorizzati. "
-        "Non inventare strumenti."
+        "Sei un router per un agente di analisi dati. "
+        "Restituisci esclusivamente JSON valido nel formato richiesto. "
+        "Utilizza soltanto gli strumenti autorizzati. "
+        "Non inventare argomenti."
     )
 
     model_output = generate_reply(
@@ -190,21 +265,46 @@ Richiesta dell'utente:
         system_prompt=system_prompt,
     )
 
-    normalized_output = normalize_text(model_output)
+    tool_call = parse_tool_call(model_output)
 
-    # Accettiamo esclusivamente strumenti presenti nella lista.
-    for tool_name in sorted(AVAILABLE_TOOLS, key=len, reverse=True):
-        if re.search(
-            rf"\b{re.escape(tool_name)}\b",
-            normalized_output,
-        ):
-            return tool_name
+    # Non accettiamo un prodotto specifico se l'utente
+    # non lo ha menzionato esplicitamente nella domanda.
+    if tool_call is not None and tool_call["tool"] == "product_revenue":
+        product = tool_call["arguments"].get("product")
 
-    # Se l'LLM non fornisce un nome valido, proviamo le regole.
-    return fallback_routing(user_message)
+        if product:
+            normalized_question = normalize_text(user_message)
+            normalized_product = normalize_text(product)
+
+            product_was_mentioned = re.search(
+                rf"\b{re.escape(normalized_product)}\b",
+                normalized_question,
+            )
+
+            if not product_was_mentioned:
+                tool_call["arguments"] = {}
 
 
-def execute_tool(tool_name: str, df=None) -> str:
+    if tool_call is not None:
+        return tool_call
+
+    # Il fallback mantiene il comportamento precedente.
+    fallback_tool = fallback_routing(user_message)
+
+    if fallback_tool is None:
+        return None
+
+    return {
+        "tool": fallback_tool,
+        "arguments": {},
+    }
+
+
+def execute_tool(
+    tool_name: str,
+    df=None,
+    arguments: dict | None = None,
+) -> str:
     """
     Esegue lo strumento selezionato usando le funzioni Python.
     """
@@ -219,7 +319,37 @@ def execute_tool(tool_name: str, df=None) -> str:
 
     if tool_name == "product_revenue":
         summary = revenue_by_product(df)
+
+        product_name = (arguments or {}).get("product")
+
+        # Se è stato indicato un prodotto specifico,
+        # restituiamo soltanto i suoi ricavi.
+        if product_name:
+            matches = summary[
+                summary["product"].astype(str).str.casefold()
+                == product_name.casefold()
+            ]
+
+            if matches.empty:
+                return f"Prodotto non trovato: {product_name}"
+
+            row = matches.iloc[0]
+
+            return (
+                f"Ricavi per {row['product']}: "
+                f"{row['revenue']:.2f}"
+            )
+
+        # Altrimenti manteniamo il comportamento precedente.
         top_product = summary.iloc[0]
+
+        return (
+            f"Prodotto più redditizio: "
+            f"{top_product['product']} "
+            f"({top_product['revenue']:.2f})\n\n"
+            f"Ricavi per prodotto:\n"
+            f"{summary.to_string(index=False)}"
+        )
 
         return (
             f"Prodotto più redditizio: "
@@ -274,29 +404,34 @@ def run_agent(
     dataset_path: str | Path = DATASET_PATH,
 ) -> str:
     """
-    Coordina la scelta dello strumento e la sua esecuzione
-    sul dataset specificato.
+    Coordina la selezione dello strumento e la sua esecuzione.
     """
 
     if not isinstance(user_message, str) or not user_message.strip():
         return "Inserisci una domanda."
 
-    tool_name = choose_tool(user_message)
+    tool_call = choose_tool(user_message)
 
-    if tool_name is None:
+    if tool_call is None:
         return (
             "Non sono riuscito a identificare lo strumento adatto. "
-            "Prova a specificare se vuoi conoscere i ricavi totali, "
-            "analizzare i prodotti, vedere i dati mensili "
-            "oppure generare un grafico."
+            "Prova a specificare quale analisi vuoi eseguire."
         )
+
+    tool_name = tool_call["tool"]
+    arguments = tool_call["arguments"]
 
     df = load_dataset(dataset_path)
 
-    result = execute_tool(tool_name, df=df)
+    result = execute_tool(
+        tool_name,
+        df=df,
+        arguments=arguments,
+    )
 
     return (
-        f"Strumento selezionato: {tool_name}\n\n"
+        f"Strumento selezionato: {tool_name}\n"
+        f"Argomenti: {arguments}\n\n"
         f"{result}"
     )
 

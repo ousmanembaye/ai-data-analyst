@@ -8,6 +8,7 @@ from agent import (
     choose_tool,
     execute_tool,
     run_agent,
+    parse_tool_call,
 )
 
 
@@ -86,12 +87,19 @@ class TestAgentRouting(unittest.TestCase):
 
     @patch("agent.generate_reply")
     def test_choose_tool_accepts_valid_tool(self, mock_generate):
-        mock_generate.return_value = "product_revenue"
+        mock_generate.return_value = (
+            '{"tool": "product_revenue", "arguments": {}}'
+        )
 
         result = choose_tool("Quale prodotto ha generato più ricavi?")
 
-        self.assertEqual(result, "product_revenue")
-        mock_generate.assert_called_once()
+        self.assertEqual(
+            result,
+            {
+                "tool": "product_revenue",
+                "arguments": {},
+            },
+        )
 
     @patch("agent.generate_reply")
     def test_choose_tool_uses_fallback_for_invalid_output(
@@ -101,7 +109,13 @@ class TestAgentRouting(unittest.TestCase):
 
         result = choose_tool("Quale prodotto ha generato più ricavi?")
 
-        self.assertEqual(result, "product_revenue")
+        self.assertEqual(
+            result,
+            {
+                "tool": "product_revenue",
+                "arguments": {},
+            },
+        )
 
     @patch("agent.generate_reply")
     def test_choose_tool_returns_none_for_unknown_request(
@@ -110,6 +124,65 @@ class TestAgentRouting(unittest.TestCase):
         mock_generate.return_value = "Risposta non valida"
 
         result = choose_tool("Ciao, come stai?")
+
+        self.assertIsNone(result)
+    
+    def test_parse_tool_call_valid_json(self):
+        output = (
+            '{"tool": "product_revenue", "arguments": {}}'
+        )
+
+        result = parse_tool_call(output)
+
+        self.assertEqual(
+            result,
+            {
+                "tool": "product_revenue",
+                "arguments": {},
+            },
+        )
+
+    def test_parse_tool_call_product_argument(self):
+        output = (
+            '{"tool": "product_revenue", '
+            '"arguments": {"product": "Laptop"}}'
+        )
+
+        result = parse_tool_call(output)
+
+        self.assertEqual(
+            result,
+            {
+                "tool": "product_revenue",
+                "arguments": {
+                    "product": "Laptop",
+                },
+            },
+        )
+
+    def test_parse_tool_call_invalid_json(self):
+        output = "Questa non è una risposta JSON valida"
+
+        result = parse_tool_call(output)
+
+        self.assertIsNone(result)
+
+    def test_parse_tool_call_unauthorized_tool(self):
+        output = (
+            '{"tool": "delete_files", "arguments": {}}'
+        )
+
+        result = parse_tool_call(output)
+
+        self.assertIsNone(result)
+
+    def test_parse_tool_call_invalid_arguments(self):
+        output = (
+            '{"tool": "product_revenue", '
+            '"arguments": {"path": "qualcosa"}}'
+        )
+
+        result = parse_tool_call(output)
 
         self.assertIsNone(result)
 
@@ -163,12 +236,98 @@ class TestAgentTools(unittest.TestCase):
 
     @patch("agent.choose_tool")
     def test_run_agent_total_revenue(self, mock_choose):
-        mock_choose.return_value = "total_revenue"
+        mock_choose.return_value = {
+            "tool": "total_revenue",
+            "arguments": {},
+        }
 
         result = run_agent("Quanto sono i ricavi totali?")
 
         self.assertIn("6111.00", result)
         mock_choose.assert_called_once()
+
+    def test_product_revenue_with_argument(self):
+        result = execute_tool(
+            "product_revenue",
+            arguments={"product": "Laptop"},
+        )
+
+        self.assertIn("Ricavi per Laptop", result)
+        self.assertIn("3650.00", result)
+
+    def test_product_revenue_unknown_product(self):
+        result = execute_tool(
+            "product_revenue",
+            arguments={"product": "Tablet"},
+        )
+
+        self.assertIn("Prodotto non trovato", result)
+
+    def test_parse_tool_call_markdown_json(self):
+        output = """```json
+{
+    "tool": "product_revenue",
+    "arguments": {
+        "product": "Laptop"
+    }
+}
+```"""
+
+        result = parse_tool_call(output)
+
+        self.assertEqual(
+            result,
+            {
+                "tool": "product_revenue",
+                "arguments": {
+                    "product": "Laptop",
+                },
+            },
+        )
+
+    @patch("agent.generate_reply")
+    def test_choose_tool_ignores_unmentioned_product(self, mock_generate):
+        mock_generate.return_value = """```json
+{
+    "tool": "product_revenue",
+    "arguments": {
+        "product": "Laptop"
+    }
+}
+```"""
+
+        result = choose_tool("Quale prodotto ha generato più ricavi?")
+
+        self.assertEqual(
+            result,
+            {
+                "tool": "product_revenue",
+                "arguments": {},
+            },
+        )
+
+    @patch("agent.generate_reply")
+    def test_choose_tool_keeps_explicit_product(self, mock_generate):
+        mock_generate.return_value = """```json
+{
+    "tool": "product_revenue",
+    "arguments": {
+        "product": "Laptop"
+    }
+}
+```"""
+
+        result = choose_tool("Quali ricavi ha generato il Laptop?")
+
+        self.assertEqual(
+            result,
+            {
+                "tool": "product_revenue",
+                "arguments": {
+                    "product": "Laptop",
+                },
+            },
+        )
 
 
 if __name__ == "__main__":
