@@ -9,6 +9,9 @@ from agent import (
     execute_tool,
     run_agent,
     parse_tool_call,
+    parse_tool_plan,
+    choose_tool_plan,
+    execute_tool_plan,
 )
 
 
@@ -45,6 +48,107 @@ class TestAgentRouting(unittest.TestCase):
     def test_fallback_unknown_request(self):
         result = fallback_routing("Ciao, come stai?")
         self.assertIsNone(result)
+
+    def test_parse_tool_plan_valid(self):
+        output = """
+        {
+            "steps": [
+                {
+                    "tool": "product_revenue",
+                    "arguments": {}
+                },
+                {
+                    "tool": "monthly_revenue",
+                    "arguments": {}
+                }
+            ]
+        }
+        """
+
+        result = parse_tool_plan(output)
+
+        self.assertEqual(
+            result,
+            [
+                {
+                    "tool": "product_revenue",
+                    "arguments": {},
+                },
+                {
+                    "tool": "monthly_revenue",
+                    "arguments": {},
+                },
+            ],
+        )
+
+    def test_parse_tool_plan_markdown_json(self):
+        output = """```json
+{
+    "steps": [
+        {
+            "tool": "product_revenue",
+            "arguments": {}
+        },
+        {
+            "tool": "monthly_revenue",
+            "arguments": {}
+        }
+    ]
+}
+```"""
+
+        result = parse_tool_plan(output)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(len(result), 2)
+
+    def test_parse_tool_plan_unauthorized_tool(self):
+        output = """
+        {
+            "steps": [
+                {
+                    "tool": "delete_files",
+                    "arguments": {}
+                }
+            ]
+        }
+        """
+
+        self.assertIsNone(parse_tool_plan(output))
+
+    def test_parse_tool_plan_empty_steps(self):
+        output = '{"steps": []}'
+
+        self.assertIsNone(parse_tool_plan(output))
+
+    def test_parse_tool_plan_too_many_steps(self):
+        output = """
+        {
+            "steps": [
+                {"tool": "total_revenue", "arguments": {}},
+                {"tool": "total_revenue", "arguments": {}},
+                {"tool": "total_revenue", "arguments": {}},
+                {"tool": "total_revenue", "arguments": {}},
+                {"tool": "total_revenue", "arguments": {}}
+            ]
+        }
+        """
+
+        self.assertIsNone(parse_tool_plan(output))
+
+    def test_parse_tool_plan_rejects_nested_workflow(self):
+        output = """
+        {
+            "steps": [
+                {
+                    "tool": "sales_overview",
+                    "arguments": {}
+                }
+            ]
+        }
+        """
+
+        self.assertIsNone(parse_tool_plan(output))
 
     def test_fallback_paraphrases(self):
         cases = [
@@ -192,6 +296,64 @@ class TestAgentRouting(unittest.TestCase):
         )
 
         self.assertEqual(result, "sales_overview")
+
+    @patch("agent.generate_reply")
+    def test_choose_tool_plan_valid(self, mock_generate):
+        mock_generate.return_value = (
+            '{"steps": ['
+            '{"tool": "product_revenue", "arguments": {}},'
+            '{"tool": "monthly_revenue", "arguments": {}}'
+            ']}'
+        )
+
+        result = choose_tool_plan(
+            "Analizza i ricavi per prodotto e per mese."
+        )
+
+        self.assertEqual(
+            result,
+            [
+                {
+                    "tool": "product_revenue",
+                    "arguments": {},
+                },
+                {
+                    "tool": "monthly_revenue",
+                    "arguments": {},
+                },
+            ],
+        )
+
+    @patch("agent.generate_reply")
+    def test_choose_tool_plan_recovers_missing_product_analysis(
+        self, mock_generate
+    ):
+        # Simuliamo il piano incompleto generato da Qwen.
+        mock_generate.return_value = (
+            '{"steps": ['
+            '{"tool": "total_revenue", "arguments": {}},'
+            '{"tool": "monthly_revenue", "arguments": {}}'
+            ']}'
+        )
+
+        result = choose_tool_plan(
+            "Analizza i ricavi per prodotto e per mese."
+        )
+
+        # Il programma deve correggere il piano incompleto.
+        self.assertEqual(
+            result,
+            [
+                {
+                    "tool": "product_revenue",
+                    "arguments": {},
+                },
+                {
+                    "tool": "monthly_revenue",
+                    "arguments": {},
+                },
+            ],
+        )
 
 
 class TestAgentTools(unittest.TestCase):
@@ -346,6 +508,47 @@ class TestAgentTools(unittest.TestCase):
         self.assertIn("2026-02", result)
         self.assertIn("2026-03", result)
 
+    def test_execute_tool_plan_preserves_order(self):
+        from unittest.mock import patch
+
+        plan = [
+            {
+                "tool": "product_revenue",
+                "arguments": {},
+            },
+            {
+                "tool": "monthly_revenue",
+                "arguments": {},
+            },
+        ]
+
+        with patch(
+            "agent.execute_tool",
+            side_effect=["RISULTATO_PRODOTTI", "RISULTATO_MENSILE"],
+        ) as mock_execute:
+
+            result = execute_tool_plan(plan, df=object())
+
+        self.assertLess(
+            result.index("RISULTATO_PRODOTTI"),
+            result.index("RISULTATO_MENSILE"),
+        )
+
+        self.assertEqual(
+            [call.args[0] for call in mock_execute.call_args_list],
+            ["product_revenue", "monthly_revenue"],
+        )
+
+    def test_execute_tool_plan_rejects_unauthorized_tool(self):
+        plan = [
+            {
+                "tool": "delete_files",
+                "arguments": {},
+            },
+        ]
+
+        with self.assertRaisesRegex(ValueError, "non valida"):
+            execute_tool_plan(plan, df=object())
 
 if __name__ == "__main__":
     unittest.main()
