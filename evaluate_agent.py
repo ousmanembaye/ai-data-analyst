@@ -1,7 +1,11 @@
 import json
 
-from agent import choose_tool, choose_tool_plan
-
+from agent import (
+    choose_tool,
+    choose_tool_plan,
+    execute_tool,
+    execute_tool_plan,
+)
 
 SINGLE_TOOL_CASES = [
     {
@@ -48,6 +52,48 @@ SINGLE_TOOL_CASES = [
     },
 ]
 
+OUTPUT_CASES = [
+    {
+        "name": "Ricavi totali",
+        "tool": "total_revenue",
+        "expected": ["6111.00"],
+    },
+    {
+        "name": "Ricavi per prodotto",
+        "tool": "product_revenue",
+        "expected": [
+            "Laptop",
+            "3650",
+            "Monitor",
+            "1620",
+            "Keyboard",
+            "465",
+            "Mouse",
+            "376",
+        ],
+    },
+    {
+        "name": "Ricavi mensili",
+        "tool": "monthly_revenue",
+        "expected": [
+            "2026-01",
+            "2540",
+            "2026-02",
+            "1875",
+            "2026-03",
+            "1696",
+        ],
+    },
+    {
+        "name": "Profilo del dataset",
+        "tool": "dataset_profile",
+        "expected": [
+            "Righe: 10",
+            "Colonne: 5",
+            "region: 1",
+        ],
+    },
+]
 
 def evaluate_single_tools() -> tuple[int, int]:
     """Valuta la selezione dei singoli strumenti."""
@@ -144,30 +190,130 @@ def evaluate_workflow() -> tuple[int, int]:
 
     return passed, total
 
+def evaluate_tool_outputs() -> tuple[int, int]:
+    """
+    Verifica che gli strumenti restituiscano
+    i risultati attesi dal dataset.
+    """
+
+    passed = 0
+    total = len(OUTPUT_CASES) + 1
+
+    print("\n=== VALUTAZIONE DEI RISULTATI ===")
+
+    for case in OUTPUT_CASES:
+        name = case["name"]
+        tool = case["tool"]
+        expected = case["expected"]
+
+        try:
+            result = execute_tool(tool)
+
+            missing = [
+                value
+                for value in expected
+                if value not in result
+            ]
+
+            success = len(missing) == 0
+
+            print(
+                f"\n[{'OK' if success else 'ERRORE'}] {name}"
+            )
+
+            if not success:
+                print(f"Valori mancanti: {missing}")
+
+            if success:
+                passed += 1
+
+        except Exception as exc:
+            print(f"\n[ERRORE] {name}: {exc}")
+
+    # Verifichiamo anche il risultato del workflow multi-step.
+    print("\n=== VALUTAZIONE WORKFLOW MULTI-STEP ===")
+
+    plan = [
+        {
+            "tool": "product_revenue",
+            "arguments": {},
+        },
+        {
+            "tool": "monthly_revenue",
+            "arguments": {},
+        },
+    ]
+
+    expected_workflow = [
+        "Laptop",
+        "3650",
+        "Monitor",
+        "1620",
+        "2026-01",
+        "2540",
+        "2026-02",
+        "1875",
+        "2026-03",
+        "1696",
+    ]
+
+    try:
+        result = execute_tool_plan(plan)
+
+        missing = [
+            value
+            for value in expected_workflow
+            if value not in result
+        ]
+
+        success = len(missing) == 0
+
+        print(
+            f"\n[{'OK' if success else 'ERRORE'}] "
+            "Completezza del risultato multi-step"
+        )
+
+        if not success:
+            print(f"Valori mancanti: {missing}")
+
+        if success:
+            passed += 1
+
+    except Exception as exc:
+        print(f"\n[ERRORE] Workflow: {exc}")
+
+    return passed, total
 
 def main() -> None:
-    total_passed = 0
-    total_tests = 0
+    routing_passed = 0
+    routing_total = 0
 
     passed, total = evaluate_single_tools()
-    total_passed += passed
-    total_tests += total
+    routing_passed += passed
+    routing_total += total
 
     passed, total = evaluate_workflow()
-    total_passed += passed
-    total_tests += total
+    routing_passed += passed
+    routing_total += total
 
-    accuracy = total_passed / total_tests * 100
+    output_passed, output_total = evaluate_tool_outputs()
 
     print("\n=== RISULTATO FINALE ===")
-    print(f"Verifiche superate: {total_passed}/{total_tests}")
-    print(f"Accuratezza: {accuracy:.1f}%")
 
-    if total_passed < total_tests:
-        print(
-            "Alcune verifiche non sono state superate. "
-            "Analizza i risultati prima di modificare il codice."
-        )
+    routing_accuracy = routing_passed / routing_total * 100
+    output_accuracy = output_passed / output_total * 100
+
+    print(
+        f"Routing e pianificazione: "
+        f"{routing_passed}/{routing_total} "
+        f"({routing_accuracy:.1f}%)"
+    )
+
+    print(
+        f"Qualità dei risultati: "
+        f"{output_passed}/{output_total} "
+        f"({output_accuracy:.1f}%)"
+    )
 
 
 if __name__ == "__main__":
