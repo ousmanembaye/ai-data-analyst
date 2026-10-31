@@ -355,6 +355,25 @@ class TestAgentRouting(unittest.TestCase):
             ],
         )
 
+    @patch("agent.generate_reply")
+    def test_choose_tool_corrects_chart_request(self, mock_generate):
+        # Qwen restituisce uno strumento valido, ma sbagliato.
+        mock_generate.return_value = (
+            '{"tool": "monthly_revenue", "arguments": {}}'
+        )
+
+        result = choose_tool(
+            "Crea un grafico dei ricavi mensili."
+        )
+
+        self.assertEqual(
+            result,
+            {
+                "tool": "monthly_chart",
+                "arguments": {},
+            },
+        )
+
 
 class TestAgentTools(unittest.TestCase):
 

@@ -480,6 +480,22 @@ Richiesta dell'utente:
 
     tool_call = parse_tool_call(model_output)
 
+    # Correggiamo le richieste esplicite di grafici mensili.
+    normalized_question = normalize_text(user_message)
+
+    chart_terms = (
+        "grafico",
+        "diagramma",
+        "disegna",
+        "visualizza",
+    )
+
+    if any(term in normalized_question for term in chart_terms):
+        tool_call = {
+            "tool": "monthly_chart",
+            "arguments": {},
+        }
+
     # Non accettiamo un prodotto specifico se l'utente
     # non lo ha menzionato esplicitamente nella domanda.
     if tool_call is not None and tool_call["tool"] == "product_revenue":
