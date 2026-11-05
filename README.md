@@ -67,6 +67,40 @@ Apri nel browser l'indirizzo locale mostrato nel terminale, normalmente `http://
 
 Al primo avvio potrebbe essere necessario scaricare il modello linguistico da Hugging Face.
 
+## API REST (FastAPI)
+
+Il progetto include anche un backend REST sviluppato con FastAPI.
+
+### Avvio del server
+
+Esegui:
+
+    python -m uvicorn api:app --reload --port 8000
+
+### Documentazione interattiva
+
+Apri nel browser:
+
+    http://127.0.0.1:8000/docs
+
+### Endpoint disponibili
+
+| Metodo | Endpoint | Descrizione |
+|---|---|---|
+| GET | /health | Verifica lo stato dell'API |
+| POST | /analyze | Analizza il dataset predefinito |
+| POST | /analyze-upload | Carica e analizza un CSV o Excel |
+
+### Upload dei dataset
+
+L'endpoint `/analyze-upload` accetta:
+
+- File CSV (`.csv`)
+- File Excel (`.xlsx`)
+- Dimensione massima: 10 MB
+
+La richiesta contiene la domanda dell'utente e il file da analizzare.
+
 ## Test
 
 Per eseguire tutti i test:
