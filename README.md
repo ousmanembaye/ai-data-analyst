@@ -101,6 +101,30 @@ L'endpoint `/analyze-upload` accetta:
 
 La richiesta contiene la domanda dell'utente e il file da analizzare.
 
+## Architecture
+
+```mermaid
+flowchart TD
+    U[User] --> G[Gradio Interface]
+    U --> API[FastAPI REST API]
+
+    G --> A[AI Agent]
+    API --> A
+
+    A --> L[Qwen2.5-0.5B-Instruct]
+    L -->|Structured JSON| A
+
+    A --> T[Tool Selection and Workflow]
+    T --> D[Data Analyzer]
+
+    DS[(CSV / XLSX Dataset)] --> D
+
+    D --> R[Analysis Results]
+
+    R --> G
+    R --> API
+```
+
 ## Test
 
 Per eseguire tutti i test:
