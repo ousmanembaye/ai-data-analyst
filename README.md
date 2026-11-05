@@ -16,6 +16,10 @@ pinned: false
 
 Agente AI che permette di analizzare dataset CSV ed Excel attraverso domande in linguaggio naturale.
 
+## Demo
+
+![AI Data Analyst Agent Demo](docs/ai-data-analyst-demo.png)
+
 ## Funzionalità
 
 * Caricamento di file CSV ed Excel (`.xlsx`).
